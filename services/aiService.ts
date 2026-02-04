@@ -1,16 +1,24 @@
 import { GoogleGenAI } from "@google/genai";
 import { DashboardStats, DeptChartData } from '../types';
 
-// Initialize Gemini API Client
-// Note: API Key is expected to be in process.env.API_KEY as per environment configuration
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 export const generateDashboardInsights = async (
   stats: DashboardStats,
   topDepts: DeptChartData[],
   year: string
 ): Promise<string> => {
   try {
+    // Initialize Gemini API Client inside the function scope
+    // This prevents "process is not defined" errors from crashing the entire app on load
+    // and ensures the SDK is only instantiated when needed.
+    const apiKey = process.env.API_KEY;
+    
+    if (!apiKey) {
+      console.warn("API Key is missing in process.env");
+      return "Unable to access AI service. API Key is missing in the environment configuration.";
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+
     const deptSummary = topDepts.slice(0, 5).map(d => `- ${d.name}: ${d.value} sheets`).join('\n');
     
     const prompt = `
@@ -42,6 +50,6 @@ export const generateDashboardInsights = async (
     return response.text || "No insights could be generated at this time.";
   } catch (error) {
     console.error("AI Generation Error:", error);
-    throw new Error("Unable to contact AI service. Please ensure your API Key is configured correctly.");
+    return "An error occurred while communicating with the AI service. Please check your network connection or API quota.";
   }
 };

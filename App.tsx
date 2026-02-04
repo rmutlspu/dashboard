@@ -1,18 +1,27 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, Suspense, lazy } from 'react';
 import { fetchPaperData } from './services/dataService';
 import { generateDashboardInsights } from './services/aiService';
 import { PaperRecord } from './types';
 import { calculateStats, getDepartmentUsage, getYearlyTrend, getUserTypeUsage, getPaperSavingRatio, getUserTypePieData, parseDate, downloadCSV } from './utils/analytics';
 import StatsCard from './components/StatsCard';
-import DepartmentBarChart from './components/Charts/DepartmentBarChart';
-import UsagePieChart from './components/Charts/UsagePieChart';
-import DailyTrendChart from './components/Charts/DailyTrendChart';
-import InsightModal from './components/InsightModal';
 import { 
   FileText, Printer, Trees, Loader2, Filter, X, ChevronDown, 
   Leaf, Users, Building2, Calendar, RefreshCw, Download, 
   Droplets, CloudFog, Coins, Zap, Sparkles
 } from 'lucide-react';
+
+// Lazy load heavy chart components and modal to fix chunk size warnings
+const DepartmentBarChart = lazy(() => import('./components/Charts/DepartmentBarChart'));
+const UsagePieChart = lazy(() => import('./components/Charts/UsagePieChart'));
+const DailyTrendChart = lazy(() => import('./components/Charts/DailyTrendChart'));
+const InsightModal = lazy(() => import('./components/InsightModal'));
+
+// Loading skeleton for charts
+const ChartSkeleton = () => (
+  <div className="bg-white/50 animate-pulse rounded-3xl h-[400px] w-full flex items-center justify-center border border-slate-100">
+    <Loader2 className="text-emerald-200 animate-spin" size={32} />
+  </div>
+);
 
 const App: React.FC = () => {
   const [rawData, setRawData] = useState<PaperRecord[]>([]);
@@ -86,7 +95,7 @@ const App: React.FC = () => {
   const stats = useMemo(() => calculateStats(filteredData), [filteredData]);
   const deptData = useMemo(() => getDepartmentUsage(filteredData), [filteredData]);
   const userTypeChartData = useMemo(() => getUserTypeUsage(filteredData), [filteredData]);
-  const trendData = useMemo(() => getYearlyTrend(filteredData), [filteredData]); // Switched to Yearly
+  const trendData = useMemo(() => getYearlyTrend(filteredData), [filteredData]); 
   const pieData = useMemo(() => getPaperSavingRatio(filteredData), [filteredData]);
   const userTypePieData = useMemo(() => getUserTypePieData(filteredData), [filteredData]);
 
@@ -103,7 +112,6 @@ const App: React.FC = () => {
 
   const handleGenerateInsight = async () => {
     setIsInsightOpen(true);
-    // Only generate if content is empty or filters changed (optional optimization, but for now re-gen always for freshness)
     setIsInsightLoading(true);
     try {
       const result = await generateDashboardInsights(stats, deptData, selectedYear);
@@ -149,13 +157,15 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/10 to-slate-100 font-sans text-slate-900 selection:bg-emerald-100">
       
-      {/* AI Insight Modal */}
-      <InsightModal 
-        isOpen={isInsightOpen} 
-        onClose={() => setIsInsightOpen(false)} 
-        isLoading={isInsightLoading} 
-        content={insightContent} 
-      />
+      {/* AI Insight Modal with Suspense */}
+      <Suspense fallback={null}>
+        <InsightModal 
+          isOpen={isInsightOpen} 
+          onClose={() => setIsInsightOpen(false)} 
+          isLoading={isInsightLoading} 
+          content={insightContent} 
+        />
+      </Suspense>
 
       {/* Modern Navbar */}
       <nav className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-slate-200/60 shadow-sm">
@@ -223,7 +233,6 @@ const App: React.FC = () => {
               </div>
 
               <div className="flex-grow grid grid-cols-1 md:grid-cols-3 gap-3 w-full md:w-auto md:max-w-3xl">
-                 {/* Filters... */}
                  <div className="relative group">
                    <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
                       <Calendar size={18} />
@@ -361,22 +370,26 @@ const App: React.FC = () => {
            </div>
         </div>
 
-        {/* Charts Section */}
+        {/* Charts Section with Suspense */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
            <div className="lg:col-span-1">
-             <UsagePieChart 
-                data={pieData} 
-                title="Efficiency Ratio" 
-                subtitle="Pages per sheet utilization" 
-             />
+             <Suspense fallback={<ChartSkeleton />}>
+               <UsagePieChart 
+                  data={pieData} 
+                  title="Efficiency Ratio" 
+                  subtitle="Pages per sheet utilization" 
+               />
+             </Suspense>
            </div>
            <div className="lg:col-span-1">
-             <UsagePieChart 
-                data={userTypePieData} 
-                title="User Distribution" 
-                subtitle="Consumption by user type" 
-                unit="Sheets"
-             />
+             <Suspense fallback={<ChartSkeleton />}>
+               <UsagePieChart 
+                  data={userTypePieData} 
+                  title="User Distribution" 
+                  subtitle="Consumption by user type" 
+                  unit="Sheets"
+               />
+             </Suspense>
            </div>
            <div className="lg:col-span-2 md:col-span-2 flex flex-col gap-6">
              {/* Chart Switcher Buttons */}
@@ -405,17 +418,21 @@ const App: React.FC = () => {
                 </button>
              </div>
              
-             <DepartmentBarChart 
-               data={chartMode === 'department' ? deptData : userTypeChartData} 
-               title={chartMode === 'department' ? "Consumption by Department" : "Consumption by User Type"}
-               subtitle={chartMode === 'department' ? "Top departments by paper usage" : "Paper usage broken down by user category"}
-             />
+             <Suspense fallback={<ChartSkeleton />}>
+               <DepartmentBarChart 
+                 data={chartMode === 'department' ? deptData : userTypeChartData} 
+                 title={chartMode === 'department' ? "Consumption by Department" : "Consumption by User Type"}
+                 subtitle={chartMode === 'department' ? "Top departments by paper usage" : "Paper usage broken down by user category"}
+               />
+             </Suspense>
            </div>
         </div>
 
-        {/* Yearly Trend Chart */}
+        {/* Yearly Trend Chart with Suspense */}
         <div>
-          <DailyTrendChart data={trendData} />
+          <Suspense fallback={<ChartSkeleton />}>
+            <DailyTrendChart data={trendData} />
+          </Suspense>
         </div>
 
         {/* Data Table */}
